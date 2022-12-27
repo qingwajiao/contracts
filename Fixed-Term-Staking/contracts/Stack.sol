@@ -143,17 +143,24 @@ contract LPMining is Ownable {
 
     function initialized()private {
 
-        ArpInfo[] memory temp = new ArpInfo[](1);
-        temp[0] =  ArpInfo({
+
+        PoolInfo storage newPool = poolInfo[0];
+        newPool.duration = 12 weeks;
+        newPool.arps.push(ArpInfo({
             arp:100,
             time:block.timestamp
-        });
-        PoolInfo memory p1 = PoolInfo({
-            duration: 1 weeks,
-            arps:temp
-        });
+            }));
+        // ArpInfo[] memory temp = new ArpInfo[](1);
+        // temp[0] =  ArpInfo({
+        //     arp:100,
+        //     time:block.timestamp
+        // });
+        // PoolInfo memory p1 = PoolInfo({
+        //     duration: 1 weeks,
+        //     arps:temp
+        // });
 
-        poolInfo.push(p1);
+        // poolInfo.push(p1);
        
 
     }
@@ -176,19 +183,26 @@ contract LPMining is Ownable {
      * @dev Add a new lp to the pool. Can only be called by the owner.
      * XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
      */
-    function add(uint256 _arp, uint256 _duration) public onlyOwner {
+    function add(uint256 _arp, uint256 _duration) external  onlyOwner {
 
-        ArpInfo[] memory temp = new ArpInfo[](1);
-        temp[0] =  ArpInfo({
+        PoolInfo storage newPool = poolInfo[poolInfo.length];
+        newPool.duration = _duration;
+        newPool.arps.push(ArpInfo({
             arp:_arp,
             time:block.timestamp
-            });
-        PoolInfo memory newPool = PoolInfo({
-            duration: _duration,
-            arps:temp
-            });
+            }));
 
-        poolInfo.push(newPool);
+        // ArpInfo[] memory temp = new ArpInfo[](1);
+        // temp[0] =  ArpInfo({
+        //     arp:_arp,
+        //     time:block.timestamp
+        //     });
+        // PoolInfo memory newPool = PoolInfo({
+        //     duration: _duration,
+        //     arps:temp
+        //     });
+
+        // poolInfo.push(newPool);
     }
 
     /**
@@ -323,13 +337,14 @@ contract LPMining is Ownable {
 
     function calculateReward(uint256 _pid, address _user) public view returns (uint256 reward) {
         PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][msg.sender];
+        UserInfo storage user = userInfo[_pid][_user];
         uint256 len = pool.arps.length;
         uint256 multiplier;
         bool flag;
+        // 如果
         if (pool.arps[len-1].time < user.lockStartTime){
             multiplier = pool.duration;
-            reward = multiplier.mul(pool.arps[0].arp).mul(user.amount);
+            reward = multiplier.mul(pool.arps[len-1].arp).mul(user.amount);
             return reward;
         }
 
@@ -344,10 +359,10 @@ contract LPMining is Ownable {
             if (!flag){
                 multiplier = getMultiplier(pool.arps[i].time, user.lockStartTime);
                 if (multiplier > pool.duration){
-                    reward = pool.duration.mul(pool.arps[i].arp).mul(user.amount).mul(user.amount);
+                    reward = pool.duration.mul(pool.arps[i].arp).mul(user.amount);
                     return reward;
                     }
-                reward = multiplier.mul(pool.arps[i].arp).mul(user.amount).mul(user.amount);
+                reward = multiplier.mul(pool.arps[i].arp).mul(user.amount);
                 flag = true;
                 continue ;
             }
@@ -374,39 +389,49 @@ contract LPMining is Ownable {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
 
-        uint256 reward =  calculateReward(_pid,msg.sender);
-        // 先判断时间是否到期
-        if(user.lockStartTime.add(pool.duration)> block.timestamp){
-            // 已到期，可以取出本金和利息
-            // 1、是否允许只取一部分本金
-            // // 2、超过质押时间的那部分时间还算不算利息
-            // updatePool(_pid);
-            if (user.amount > 0) {
+
+        if (user.amount > 0){
+            
+            if(user.lockStartTime.add(pool.duration)> block.timestamp){
+                // 质押到期，返还利息
                 uint256 pending = calculateReward(_pid,msg.sender);
                 if(pending > 0) {
                     IBEP20(arc).safeTransfer(msg.sender, pending);
                 }
-            }
-            if (_amount > 0) {
 
+                // 追加本金 、更新质押开始时间 
                 IBEP20(arc).safeTransferFrom(address(msg.sender), address(this), _amount);
                 user.amount = user.amount.add(_amount);
-            }
+            
+                user.lockStartTime = block.timestamp;
+                user.number = pool.arps.length - 1;
+
+                emit Deposit(msg.sender, _pid, _amount);
+                return;
+
+            }else{
+
+                // 追加本金 、更新质押开始时间 
+                IBEP20(arc).safeTransferFrom(address(msg.sender), address(this), _amount);
+                user.amount = user.amount.add(_amount);
+            
+                user.lockStartTime = block.timestamp;
+                user.number = pool.arps.length - 1;
+
+                emit Deposit(msg.sender, _pid, _amount);
+                return;
+            }       
+        }else {
+            // 第一次质押
+            // 记录用户 本金和质押时间
             user.lockStartTime = block.timestamp;
-            user.number = pool.arps.length - 1;
-
+            user.number = pool.arps.length - 1; 
+            user.amount = _amount; 
+            IBEP20(arc).safeTransferFrom(address(msg.sender), address(this), _amount);
             emit Deposit(msg.sender, _pid, _amount);
-            return;
-
+            return ; 
         }
-
-        user.lockStartTime = block.timestamp;
-        user.number = pool.arps.length - 1;
-
-        emit Deposit(msg.sender, _pid, _amount);
-        return ;
         
-        // 如果未到时间，则将用户的利息清零，并从当前时间开始质押
     }
 
     /**
@@ -416,31 +441,34 @@ contract LPMining is Ownable {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         require(user.amount >= _amount, "BFLY: SUFFICIENT_BALANCE");
+
         if(user.lockStartTime.add(pool.duration)> block.timestamp){
 
+            // 返还利息
             uint256 pending = calculateReward(_pid,msg.sender);
                 if(pending > 0) {
                     IBEP20(arc).safeTransfer(msg.sender, pending);
                 }
             
-
-            IBEP20(arc).safeTransfer(msg.sender, user.amount);
-
         }
-        emergencyWithdraw(_pid);
+            
+            IBEP20(arc).safeTransfer(msg.sender, user.amount);
+            // 将用户质押信息归零
+            user.amount = 0; 
+            return;
         
     }
 
     /**
      * @dev Withdraw without caring about rewards. EMERGENCY ONLY.
      */
-    function emergencyWithdraw(uint256 _pid) public {
-        PoolInfo storage pool = poolInfo[_pid];
-        UserInfo storage user = userInfo[_pid][msg.sender];
-        arc.safeTransfer(address(msg.sender), user.amount);
-        emit EmergencyWithdraw(msg.sender, _pid, user.amount);
-        user.amount = 0;
-    }
+    // function emergencyWithdraw(uint256 _pid) public {
+    //     PoolInfo storage pool = poolInfo[_pid];
+    //     UserInfo storage user = userInfo[_pid][msg.sender];
+    //     arc.safeTransfer(address(msg.sender), user.amount);
+    //     emit EmergencyWithdraw(msg.sender, _pid, user.amount);
+    //     user.amount = 0;
+    // }
 
     /**
      * @dev Update dev address by the previous dev.
