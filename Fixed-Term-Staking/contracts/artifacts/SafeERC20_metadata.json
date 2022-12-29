@@ -1,0 +1,47 @@
+{
+	"compiler": {
+		"version": "0.8.17+commit.8df45f5f"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [],
+		"devdoc": {
+			"details": "Wrappers around ERC20 operations that throw on failure (when the token contract returns false). Tokens that return no value (and instead revert or throw on failure) are also supported, non-reverting calls are assumed to be successful. To use this library you can add a `using SafeERC20 for IERC20;` statement to your contract, which allows you to call the safe operations as `token.safeTransfer(...)`, etc.",
+			"kind": "dev",
+			"methods": {},
+			"title": "SafeERC20",
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"Lock.sol": "SafeERC20"
+		},
+		"evmVersion": "london",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": true,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"Lock.sol": {
+			"keccak256": "0x206baf5203f12dd3c0cf03469f58fde93b03eb8d8332cfa63b196829507d25ab",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://8be0a7e04737635d90e367c42dda2d140346dff7c859db4f97863aa21ad4d216",
+				"dweb:/ipfs/QmZTjQXfdrcHrz4N9pZgst7eR69urGkvRmq3Z2wEfBdX9v"
+			]
+		}
+	},
+	"version": 1
+}

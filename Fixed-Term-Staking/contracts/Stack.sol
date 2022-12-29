@@ -23,7 +23,11 @@ contract LPMining is Ownable {
      */
     using SafeBEP20 for IBEP20;
 
-    // uint256 public constant denominator = 12 * 60 * 24 * 365;
+    uint256 public constant DENOMINATOR = 365 days;  
+
+    uint256 public constant BASE = 100;
+
+    uint256 public constant DENOMINATOR_TEST = 5 minutes;
 
     // uint256 public constant day = 12 * 60 * 24;
     
@@ -86,7 +90,7 @@ contract LPMining is Ownable {
     /**
      * ARC tokens per block.
      */
-    uint256 public arcPerBlock;
+    // uint256 public arcPerBlock;
 
     /**
      * Bonus muliplier for early ARC makers.
@@ -104,54 +108,78 @@ contract LPMining is Ownable {
     /**
      * Total allocation poitns. Must be the sum of all allocation points in all pools.
      */
-    uint256 public totalAllocPoint = 0;
+    // uint256 public totalAllocPoint = 0;
 
     /**
      * The block number when mining starts.
      */
-    uint256 public startBlock;
+    // uint256 public startBlock;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
 
-    // constructor(
-    //     IBEP20 _para,
-    //     uint256 _arcPerBlock,
-    //     uint256 _startBlock
-    // ) {
-    //     para = _para;
-    //     arcPerBlock = _arcPerBlock;
-    //     startBlock = _startBlock;
+    constructor(
+        IBEP20 _para
+        // uint256 _arcPerBlock,
+        // uint256 _startBlock
+    ) {
+        para = _para;
+        // arcPerBlock = _arcPerBlock;
+        // startBlock = _startBlock;
 
-    //     // poolInfo.push(PoolInfo({
-    //     //     duration: 1 weeks,
-    //     //     allocPoint: 1000,
-    //     //     lastRewardBlock: startBlock,
-    //     //     accARCPerShare: 0,
-    //     //     amount: 0
 
-    //     // }));
+        // PoolInfo storage pool0 = poolInfos[0];
+        // pool0.duration = 90 days;
+        // pool0.aprs.push(AprInfo({
+        //     apr:10,
+        //     time:block.timestamp
+        //     }));
 
-    //     totalAllocPoint = 1000;
-    // }
+        // AprInfo[] memory ais;
+        // ais[0] = AprInfo(10,block.timestamp);
+
+        // PoolInfo memory p0 = PoolInfo(90 days,ais);
+
+        // poolInfos.push(p0);
+
+        initialized();
+    }
 
 
     function aadd()public pure returns(uint256){
         return 1 minutes;
     }
 
+    function getPoolInfo(uint256 id)public view returns (PoolInfo memory) {
+        return poolInfos[id];
+    }
+
     function initialized()private {
 
+        // uint id = poolInfos.length;
+        PoolInfo storage p = poolInfos.push();
 
-        PoolInfo storage newPool = poolInfos[0];
-        newPool.duration = 90 days;
-        newPool.aprs.push(AprInfo({
-            apr:100,
-            time:block.timestamp
-            }));
+        p.aprs.push(AprInfo(20, block.timestamp));
+        p.duration = 5;
 
-    }
+        // poolInfos.push(PoolInfo(180 days, poolInfos[id].aprs));
+
+        // PoolInfo storage pool1 = poolInfos[1];
+        // pool1.duration = 180 days;
+        // pool1.aprs.push(AprInfo({
+        //     apr:20,
+        //     time:block.timestamp
+        //     }));  
+
+        // PoolInfo storage pool2 = poolInfos[2];
+        // pool2.duration = 360 days;
+        // pool2.aprs.push(AprInfo({
+        //     apr:30,
+        //     time: block.timestamp
+        //     })); 
+
+    }           
 
     /**
      * @dev Update multiplier
@@ -173,12 +201,18 @@ contract LPMining is Ownable {
      */
     function add(uint256 _apr, uint256 _duration) external  onlyOwner {
 
-        PoolInfo storage newPool = poolInfos[poolInfos.length];
-        newPool.duration = _duration;
-        newPool.aprs.push(AprInfo({
-            apr:_apr,
-            time:block.timestamp
-            }));
+
+        PoolInfo storage p = poolInfos.push();
+
+        p.aprs.push(AprInfo(_apr, block.timestamp));
+        p.duration = _duration;
+
+        // PoolInfo storage newPool = poolInfos[poolInfos.length];
+        // newPool.duration = _duration;
+        // newPool.aprs.push(AprInfo({
+        //     apr:_apr,
+        //     time:block.timestamp
+        //     }));
 
     }
 
@@ -215,13 +249,13 @@ contract LPMining is Ownable {
     function pendingReward(uint256 _pid, address _user) external view returns (uint256 reward) {
         PoolInfo storage pool = poolInfos[_pid];
         UserInfo storage user = userInfo[_pid][_user];
-
         uint256 len = pool.aprs.length;
         uint256 multiplier;
         bool flag;
         if (pool.aprs[len-1].time < user.lockStartTime){
-            multiplier = getMultiplier(user.lockStartTime, block.number);
+            multiplier = getMultiplier(user.lockStartTime,block.timestamp);
             reward = multiplier.mul(pool.aprs[len-1].apr).mul(user.amount);
+            reward = reward.div(DENOMINATOR_TEST).div(100);
             return reward;
         }
 
@@ -369,6 +403,8 @@ contract LPMining is Ownable {
         
     }
 
+
+
     /**
      * @dev Withdraw without caring about rewards. EMERGENCY ONLY.
      */
@@ -391,7 +427,7 @@ contract LPMining is Ownable {
     /**
      * @dev Update arcPerBlock by the owner.
      */
-    function setARCPerBlock(uint256 arcPerBlock_) public onlyOwner {
-        arcPerBlock = arcPerBlock_;
-    }
+    // function setARCPerBlock(uint256 arcPerBlock_) public onlyOwner {
+    //     arcPerBlock = arcPerBlock_;
+    // }
 }
