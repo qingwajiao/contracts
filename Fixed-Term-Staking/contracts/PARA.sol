@@ -32,7 +32,7 @@ import "./interfaces/IBEP20.sol";
  * functions have been added to mitigate the well-known issues around setting
  * allowances. See {IBEP20-approve}.
  */
-contract BEP20 is Context, IBEP20, Ownable {
+contract PARA is Context, IBEP20, Ownable {
     using SafeMath for uint256;
     using Address for address;
 
@@ -55,9 +55,9 @@ contract BEP20 is Context, IBEP20, Ownable {
      * All three of these values are immutable: they can only be set once during
      * construction.
      */
-    constructor(string memory name_, string memory symbol_) {
-        _name = name_;
-        _symbol = symbol_;
+    constructor() {
+        _name = "PARA";
+        _symbol = "PARA TOKEN";
         _decimals = 18;
     }
 

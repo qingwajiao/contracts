@@ -7,11 +7,10 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 
 import "./interfaces/IBEP20.sol";
-import "./interfaces/IMigratorChef.sol";
 import "./libraries/SafeBEP20.sol";
 
 
-contract LPMining is Ownable {
+contract FixedTermStack is Ownable {
 
     /**
      * Extends uint256 by SafeMath
@@ -50,8 +49,8 @@ contract LPMining is Ownable {
      */
     struct UserInfo {
         uint256 amount;     // How many LP tokens the user has provided.
-        uint256 offset; // Reward debt. See explanation below.
         uint256 lockStartTime;
+        uint256 offset; 
     }
 
     struct AprInfo {
@@ -61,6 +60,8 @@ contract LPMining is Ownable {
 
 
     struct PoolInfo{
+        uint256 id;
+        uint256 amount;
         uint256 duration;
         AprInfo[] aprs;
     }
@@ -69,17 +70,6 @@ contract LPMining is Ownable {
 
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
 
-    /**
-     * Info of each pool.
-     */
-    // struct PoolInfo {
-    //     uint256 duration;           // Address of LP token contract.
-    //     uint256 allocPoint;       // How many allocation points assigned to this pool. BFLYs to distribute per block.
-    //     uint256 lastRewardBlock;  // Last block number that BFLYs distribution occurs.
-    //     uint256 accARCPerShare; // Accumulated BFLYs per share, times 1e12. See below.
-    //     uint256 amount;
-        
-    // }
 
     /**
      * The reward token!
@@ -87,28 +77,6 @@ contract LPMining is Ownable {
     IBEP20 public para;
 
 
-    /**
-     * ARC tokens per block.
-     */
-    // uint256 public arcPerBlock;
-
-    /**
-     * Bonus muliplier for early ARC makers.
-     */
-    uint256 public BONUS_MULTIPLIER = 1;
-
-    /**
-     * The migrator contract. It has a lot of power. Can only be set through governance (owner).
-     */
-    IMigratorChef public migrator;
-
-
-    
-
-    /**
-     * Total allocation poitns. Must be the sum of all allocation points in all pools.
-     */
-    // uint256 public totalAllocPoint = 0;
 
     /**
      * The block number when mining starts.
@@ -117,51 +85,28 @@ contract LPMining is Ownable {
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
+    event AddPool(uint256 indexed pid,uint256 indexed apr, uint256 indexed duration);
+    event SetApr(uint256 indexed pid,uint256 indexed apr);
 
     constructor(
         IBEP20 _para
-        // uint256 _arcPerBlock,
-        // uint256 _startBlock
+
     ) {
         para = _para;
-        // arcPerBlock = _arcPerBlock;
-        // startBlock = _startBlock;
-
-
-        // PoolInfo storage pool0 = poolInfos[0];
-        // pool0.duration = 90 days;
-        // pool0.aprs.push(AprInfo({
-        //     apr:10,
-        //     time:block.timestamp
-        //     }));
-
-        // AprInfo[] memory ais;
-        // ais[0] = AprInfo(10,block.timestamp);
-
-        // PoolInfo memory p0 = PoolInfo(90 days,ais);
-
-        // poolInfos.push(p0);
 
         initialized();
     }
 
 
-    function aadd()public pure returns(uint256){
-        return 1 minutes;
-    }
-
-    function getPoolInfo(uint256 id)public view returns (PoolInfo memory) {
-        return poolInfos[id];
-    }
-
     function initialized()private {
 
-        // uint id = poolInfos.length;
+        uint _id = poolInfos.length;
         PoolInfo storage p = poolInfos.push();
 
         p.aprs.push(AprInfo(20, block.timestamp));
-        p.duration = 5;
+        p.duration = 5 * 1 minutes;
+        p.id = _id;
+        p.amount = 0;
 
         // poolInfos.push(PoolInfo(180 days, poolInfos[id].aprs));
 
@@ -182,58 +127,17 @@ contract LPMining is Ownable {
     }           
 
     /**
-     * @dev Update multiplier
-     */
-    // function updateMultiplier(uint256 multiplierNumber) public onlyOwner {
-    //     BONUS_MULTIPLIER = multiplierNumber;
-    // }
-
-    /**
      * @dev Number of the pools
      */
     function poolLength() external view returns (uint256) {
         return poolInfos.length;
     }
 
-    /**
-     * @dev Add a new lp to the pool. Can only be called by the owner.
-     * XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-     */
-    function add(uint256 _apr, uint256 _duration) external  onlyOwner {
-
-
-        PoolInfo storage p = poolInfos.push();
-
-        p.aprs.push(AprInfo(_apr, block.timestamp));
-        p.duration = _duration;
-
-        // PoolInfo storage newPool = poolInfos[poolInfos.length];
-        // newPool.duration = _duration;
-        // newPool.aprs.push(AprInfo({
-        //     apr:_apr,
-        //     time:block.timestamp
-        //     }));
-
+    function getPoolInfo(uint256 _pid) external view returns (PoolInfo memory info){
+        return poolInfos[_pid];
     }
 
-    /**
-     * @dev Update the given pool's BFLY allocation point. Can only be called by the owner.
-     */
-    function set(uint256 _pid, uint256 _apr) public onlyOwner {
-        PoolInfo storage pool = poolInfos[_pid];
-        pool.aprs.push(AprInfo({
-            apr:_apr,
-            time:block.timestamp
-            }));
-    }
-
-
-    /**
-     * @dev Set migrator's address
-     */
-    function setMigrator(IMigratorChef _migrator) public onlyOwner {
-        migrator = _migrator;
-    }
+ 
 
 
     /**
@@ -277,6 +181,7 @@ contract LPMining is Ownable {
 
         multiplier = getMultiplier(pool.aprs[len-1].time, block.number);
         reward =reward.add(multiplier.mul(pool.aprs[len-1].apr).mul(user.amount));
+        reward = reward.div(DENOMINATOR_TEST).div(100);
 
         return reward;
 
@@ -293,6 +198,7 @@ contract LPMining is Ownable {
         if (pool.aprs[len-1].time < user.lockStartTime){
             multiplier = pool.duration;
             reward = multiplier.mul(pool.aprs[len-1].apr).mul(user.amount);
+            reward = reward.div(DENOMINATOR_TEST).div(100);
             return reward;
         }
         for (uint i = user.offset;i< len-1;i++){
@@ -301,6 +207,7 @@ contract LPMining is Ownable {
                 multiplier = getMultiplier(user.lockStartTime, pool.aprs[i+1].time);
                 if (multiplier > pool.duration){
                     reward = pool.duration.mul(pool.aprs[i].apr).mul(user.amount);
+                    reward = reward.div(DENOMINATOR_TEST).div(100);
                     return reward;
                     }
                 reward = multiplier.mul(pool.aprs[i].apr).mul(user.amount);
@@ -312,6 +219,7 @@ contract LPMining is Ownable {
 
             if (tempNumber.add(multiplier) > pool.duration){
                 reward = reward.add(pool.duration.sub(multiplier).mul(pool.aprs[i].apr).mul(user.amount));
+                reward = reward.div(DENOMINATOR_TEST).div(100);
                 return reward;
                 }    
                 //      100          200           400   450 
@@ -322,6 +230,7 @@ contract LPMining is Ownable {
         }
 
             reward = reward.add(pool.duration.sub(multiplier).mul(pool.aprs[len-1].apr).mul(user.amount));
+            reward = reward.div(DENOMINATOR_TEST).div(100);
             return reward;          
         
     }
@@ -332,7 +241,7 @@ contract LPMining is Ownable {
     function deposit(uint256 _pid, uint256 _amount) public {
         PoolInfo storage pool = poolInfos[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
-
+        require(_amount > 0,"FixedTermStack: Below minimum");
 
         if (user.amount > 0){
             
@@ -343,38 +252,18 @@ contract LPMining is Ownable {
                     IBEP20(para).safeTransfer(msg.sender, pending);
                 }
 
-                // 追加本金 、更新质押开始时间 
-                IBEP20(para).safeTransferFrom(address(msg.sender), address(this), _amount);
-                user.amount = user.amount.add(_amount);
-            
-                user.lockStartTime = block.timestamp;
-                user.offset = pool.aprs.length - 1;
-
-                emit Deposit(msg.sender, _pid, _amount);
-                return;
-
-            }else{
-
-                // 追加本金 、更新质押开始时间 
-                IBEP20(para).safeTransferFrom(address(msg.sender), address(this), _amount);
-                user.amount = user.amount.add(_amount);
-            
-                user.lockStartTime = block.timestamp;
-                user.offset = pool.aprs.length - 1;
-
-                emit Deposit(msg.sender, _pid, _amount);
-                return;
-            }       
-        }else {
-            // 第一次质押
-            // 记录用户 本金和质押时间
-            user.lockStartTime = block.timestamp;
-            user.offset = pool.aprs.length - 1; 
-            user.amount = _amount; 
-            IBEP20(para).safeTransferFrom(address(msg.sender), address(this), _amount);
-            emit Deposit(msg.sender, _pid, _amount);
-            return ; 
+            }                 
         }
+
+                        // 追加本金 、更新质押开始时间 
+            
+        user.amount = user.amount.add(_amount);
+        user.lockStartTime = block.timestamp;
+        user.offset = pool.aprs.length - 1;
+        pool.amount = pool.amount.add(_amount);
+
+        IBEP20(para).safeTransferFrom(address(msg.sender), address(this), _amount);
+        emit Deposit(msg.sender, _pid, _amount);
         
     }
 
@@ -384,7 +273,7 @@ contract LPMining is Ownable {
     function withdraw(uint256 _pid, uint256 _amount) public {
         PoolInfo storage pool = poolInfos[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
-        require(user.amount >= _amount, "BFLY: SUFFICIENT_BALANCE");
+        require(user.amount >= _amount, "FixedTermStack: SUFFICIENT_BALANCE");
 
         if(user.lockStartTime.add(pool.duration)> block.timestamp){
 
@@ -395,39 +284,53 @@ contract LPMining is Ownable {
                 }
             
         }
+
+        user.amount = user.amount.sub(_amount);
+        user.lockStartTime = block.timestamp;
+        user.offset = pool.aprs.length - 1;
+        pool.amount = pool.amount.sub(_amount);
             
-            IBEP20(para).safeTransfer(msg.sender, user.amount);
-            // 将用户质押信息归零
-            user.amount = 0; 
-            return;
+        IBEP20(para).safeTransfer(msg.sender, _amount);
+
+        emit Withdraw(msg.sender, _pid, _amount);
         
     }
 
 
+    function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
+        require(_tokenAddress != address(para), "Cannot be staked token");
+
+        IBEP20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
+
+    }
+
+
+    function addPool(uint256 _apr, uint256 _duration) external  onlyOwner {
+
+        uint _id = poolInfos.length;
+        PoolInfo storage p = poolInfos.push();
+
+        p.aprs.push(AprInfo(_apr, block.timestamp));
+        p.duration = _duration * 1 minutes;
+        p.id = _id;
+        p.amount = 0;
+
+        emit AddPool(_id,_apr,_duration);
+
+    }
 
     /**
-     * @dev Withdraw without caring about rewards. EMERGENCY ONLY.
+     * @dev Update the given pool's BFLY allocation point. Can only be called by the owner.
      */
-    // function emergencyWithdraw(uint256 _pid) public {
-    //     PoolInfo storage pool = poolInfo[_pid];
-    //     UserInfo storage user = userInfo[_pid][msg.sender];
-    //     arc.safeTransfer(address(msg.sender), user.amount);
-    //     emit EmergencyWithdraw(msg.sender, _pid, user.amount);
-    //     user.amount = 0;
-    // }
+    function setApr(uint256 _pid, uint256 _apr) public onlyOwner {
+        PoolInfo storage pool = poolInfos[_pid];
+        pool.aprs.push(AprInfo({
+            apr:_apr,
+            time:block.timestamp
+            }));
 
-    /**
-     * @dev Update dev address by the previous dev.
-     */
-    // function setDev(address _devaddr) public {
-    //     require(msg.sender == devaddr, "BFLY: NO_PERMISSION");
-    //     devaddr = _devaddr;
-    // }
+        emit SetApr(_pid,_apr);
+    }
 
-    /**
-     * @dev Update arcPerBlock by the owner.
-     */
-    // function setARCPerBlock(uint256 arcPerBlock_) public onlyOwner {
-    //     arcPerBlock = arcPerBlock_;
-    // }
+
 }
