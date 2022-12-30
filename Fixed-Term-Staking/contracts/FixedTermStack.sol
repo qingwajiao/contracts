@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+// import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -15,7 +15,7 @@ contract FixedTermStack is Ownable {
     /**
      * Extends uint256 by SafeMath
      */
-    using SafeMath for uint256;
+    // using SafeMath for uint256;
 
     /**
      * Extends safe operation by SafeBEP20
@@ -24,14 +24,12 @@ contract FixedTermStack is Ownable {
 
     uint256 public constant DENOMINATOR = 365 days;  
 
-    uint256 public constant BASE = 100;
+    uint256 public constant BASE = 1000;
 
     uint256 public constant DENOMINATOR_TEST = 10 minutes;
 
     // uint256 public constant day = 12 * 60 * 24;
     
-    // string private constant _symbol = 'SquidGrow';
-
     /**
      * Info of each user.
      *
@@ -48,9 +46,9 @@ contract FixedTermStack is Ownable {
      *   4. User's `rewardDebt` gets updated.
      */
     struct UserInfo {
-        uint256 amount;     // How many LP tokens the user has provided.
         uint256 lockStartTime;
         uint256 offset; 
+        uint256 amount;
     }
 
     struct AprInfo {
@@ -70,13 +68,12 @@ contract FixedTermStack is Ownable {
 
     mapping (uint256 => mapping (address => UserInfo)) public userInfo;
 
+    uint256 public allAmount;
 
     /**
      * The reward token!
      */
     IBEP20 public para;
-
-
 
     /**
      * The block number when mining starts.
@@ -118,18 +115,16 @@ contract FixedTermStack is Ownable {
         return poolInfos.length;
     }
 
-    function getPoolInfo(uint256 _pid) external view returns (PoolInfo memory info){
-        return poolInfos[_pid];
+    function getPoolInfo(uint256 _pid) external view returns (uint256 ,uint256, uint256, uint256 ){
+        PoolInfo storage p = poolInfos[_pid];
+        return (p.id, p.duration, p.aprs[p.aprs.length - 1].apr,p.amount);
     }
-
- 
-
 
     /**
      * @dev Return reward multiplier over the given _from to _to block.
      */
     function getMultiplier(uint256 _from, uint256 _to) public pure returns (uint256) {
-        return _to.sub(_from);
+        return _to - _from;
     }
 
     /**
@@ -143,8 +138,7 @@ contract FixedTermStack is Ownable {
         bool flag;
         if (pool.aprs[len-1].time < user.lockStartTime){
             multiplier = getMultiplier(user.lockStartTime,block.timestamp);
-            reward = multiplier.mul(pool.aprs[len-1].apr).mul(user.amount);
-            reward = reward.div(DENOMINATOR_TEST).div(100);
+            reward = multiplier * pool.aprs[len-1].apr * user.amount / DENOMINATOR_TEST / BASE;
             return reward;
         }
 
@@ -152,21 +146,21 @@ contract FixedTermStack is Ownable {
 
             if (!flag){
                 multiplier = getMultiplier(user.lockStartTime, pool.aprs[i+1].time);
-                reward = multiplier.mul(pool.aprs[i].apr).mul(user.amount);
+                reward = multiplier * pool.aprs[i].apr * user.amount;
                 flag = true;
                 continue ;
             }
 
             uint256 tempNumber = getMultiplier(pool.aprs[i].time, pool.aprs[i+1].time);
 
-            reward =reward.add(tempNumber.mul(pool.aprs[i].apr).mul(user.amount));  
-            multiplier = multiplier.add(tempNumber);
+            reward += tempNumber * pool.aprs[i].apr * user.amount;  
+            multiplier += tempNumber;
                       
         }
 
         multiplier = getMultiplier(pool.aprs[len-1].time, block.number);
-        reward =reward.add(multiplier.mul(pool.aprs[len-1].apr).mul(user.amount));
-        reward = reward.div(DENOMINATOR_TEST).div(100);
+        reward += multiplier * pool.aprs[len-1].apr * user.amount;
+        reward = reward / DENOMINATOR_TEST / BASE;
 
         return reward;
 
@@ -179,41 +173,41 @@ contract FixedTermStack is Ownable {
         uint256 len = pool.aprs.length;
         uint256 multiplier;
         bool flag;
+        uint256 termOfValidity = ((block.timestamp - user.lockStartTime) % pool.duration) * pool.duration ;
+        
         // 如果
         if (pool.aprs[len-1].time < user.lockStartTime){
-            multiplier = pool.duration;
-            reward = multiplier.mul(pool.aprs[len-1].apr).mul(user.amount);
-            reward = reward.div(DENOMINATOR_TEST).div(100);
+            reward = termOfValidity * pool.aprs[len-1].apr * user.amount;
+            reward = reward / DENOMINATOR_TEST / BASE;
             return reward;
         }
         for (uint i = user.offset;i< len-1;i++){
 
             if (!flag){
                 multiplier = getMultiplier(user.lockStartTime, pool.aprs[i+1].time);
-                if (multiplier > pool.duration){
-                    reward = pool.duration.mul(pool.aprs[i].apr).mul(user.amount);
-                    reward = reward.div(DENOMINATOR_TEST).div(100);
+                if (multiplier > termOfValidity){
+                    reward = termOfValidity * pool.aprs[i].apr * user.amount;
+                    reward = reward / DENOMINATOR_TEST / BASE;
                     return reward;
                     }
-                reward = multiplier.mul(pool.aprs[i].apr).mul(user.amount);
+                reward = multiplier * pool.aprs[i].apr * user.amount;
                 flag = true;
                 continue ;
             }
 
             uint256 tempNumber = getMultiplier(pool.aprs[i].time, pool.aprs[i+1].time);
 
-            if (tempNumber.add(multiplier) > pool.duration){
-                reward = reward.add(pool.duration.sub(multiplier).mul(pool.aprs[i].apr).mul(user.amount));
-                reward = reward.div(DENOMINATOR_TEST).div(100);
+            if (tempNumber + multiplier > termOfValidity){
+                reward += (termOfValidity - multiplier) * pool.aprs[i].apr * user.amount;
+                reward = reward / DENOMINATOR_TEST / BASE;
                 return reward;
                 }    
             
-            reward =reward.add(tempNumber.mul(pool.aprs[i].apr).mul(user.amount));  
-            multiplier = multiplier.add(tempNumber);          
+            reward += tempNumber * pool.aprs[i].apr * user.amount;  
+            multiplier += tempNumber;          
         }
 
-            reward = reward.add(pool.duration.sub(multiplier).mul(pool.aprs[len-1].apr).mul(user.amount));
-            reward = reward.div(DENOMINATOR_TEST).div(100);
+            reward += (termOfValidity - multiplier) * pool.aprs[len-1].apr * user.amount / DENOMINATOR_TEST / BASE;
             return reward;          
         
     }
@@ -228,7 +222,7 @@ contract FixedTermStack is Ownable {
 
         if (user.amount > 0){
             
-            if(user.lockStartTime.add(pool.duration)> block.timestamp){
+            if(user.lockStartTime + pool.duration < block.timestamp){
                 // 质押到期，返还利息
                 uint256 pending = calculateReward(_pid,msg.sender);
                 if(pending > 0) {
@@ -240,10 +234,12 @@ contract FixedTermStack is Ownable {
 
                         // 追加本金 、更新质押开始时间 
             
-        user.amount = user.amount.add(_amount);
+        user.amount += _amount;
         user.lockStartTime = block.timestamp;
         user.offset = pool.aprs.length - 1;
-        pool.amount = pool.amount.add(_amount);
+        pool.amount += _amount;
+        allAmount += _amount;
+
 
         IBEP20(para).safeTransferFrom(address(msg.sender), address(this), _amount);
         emit Deposit(msg.sender, _pid, _amount);
@@ -253,12 +249,12 @@ contract FixedTermStack is Ownable {
     /**
      * @dev Withdraw LP tokens from MasterChef.
      */
-    function withdraw(uint256 _pid, uint256 _amount) public {
+    function withdraw(uint256 _pid) public {
         PoolInfo storage pool = poolInfos[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
-        require(user.amount >= _amount, "FixedTermStack: SUFFICIENT_BALANCE");
+        require(user.amount >= 0, "FixedTermStack: SUFFICIENT_BALANCE");
 
-        if(user.lockStartTime.add(pool.duration)> block.timestamp){
+        if(user.lockStartTime + pool.duration < block.timestamp){
 
             // 返还利息
             uint256 pending = calculateReward(_pid,msg.sender);
@@ -268,14 +264,15 @@ contract FixedTermStack is Ownable {
             
         }
 
-        user.amount = user.amount.sub(_amount);
-        user.lockStartTime = block.timestamp;
-        user.offset = pool.aprs.length - 1;
-        pool.amount = pool.amount.sub(_amount);
+        user.amount = 0;
+        user.lockStartTime = 0;
+        user.offset = 0;
+        pool.amount -= user.amount;
+        allAmount -= user.amount;
             
-        IBEP20(para).safeTransfer(msg.sender, _amount);
+        IBEP20(para).safeTransfer(msg.sender, user.amount);
 
-        emit Withdraw(msg.sender, _pid, _amount);
+        emit Withdraw(msg.sender, _pid, user.amount);
         
     }
 
@@ -288,13 +285,8 @@ contract FixedTermStack is Ownable {
     }
 
     function refundReward()external onlyOwner {
-        
-    }
-
-    function getAllAmount()public view returns(uint256 allAmount){
-        for(uint i = 0; i < poolInfos.length;i++){
-            allAmount += poolInfos[i].amount;
-        }
+        uint256 balances = para.balanceOf(address(this));
+        IBEP20(para).safeTransfer(msg.sender, balances - allAmount);
     }
 
 
