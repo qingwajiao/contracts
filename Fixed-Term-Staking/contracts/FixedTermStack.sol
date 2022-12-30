@@ -26,7 +26,7 @@ contract FixedTermStack is Ownable {
 
     uint256 public constant BASE = 100;
 
-    uint256 public constant DENOMINATOR_TEST = 5 minutes;
+    uint256 public constant DENOMINATOR_TEST = 10 minutes;
 
     // uint256 public constant day = 12 * 60 * 24;
     
@@ -108,21 +108,6 @@ contract FixedTermStack is Ownable {
         p.id = _id;
         p.amount = 0;
 
-        // poolInfos.push(PoolInfo(180 days, poolInfos[id].aprs));
-
-        // PoolInfo storage pool1 = poolInfos[1];
-        // pool1.duration = 180 days;
-        // pool1.aprs.push(AprInfo({
-        //     apr:20,
-        //     time:block.timestamp
-        //     }));  
-
-        // PoolInfo storage pool2 = poolInfos[2];
-        // pool2.duration = 360 days;
-        // pool2.aprs.push(AprInfo({
-        //     apr:30,
-        //     time: block.timestamp
-        //     })); 
 
     }           
 
@@ -222,8 +207,6 @@ contract FixedTermStack is Ownable {
                 reward = reward.div(DENOMINATOR_TEST).div(100);
                 return reward;
                 }    
-                //      100          200           400   450 
-                //             150 
             
             reward =reward.add(tempNumber.mul(pool.aprs[i].apr).mul(user.amount));  
             multiplier = multiplier.add(tempNumber);          
@@ -297,11 +280,21 @@ contract FixedTermStack is Ownable {
     }
 
 
-    function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
+    function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount)external onlyOwner {
         require(_tokenAddress != address(para), "Cannot be staked token");
 
         IBEP20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
 
+    }
+
+    function refundReward()external onlyOwner {
+        
+    }
+
+    function getAllAmount()public view returns(uint256 allAmount){
+        for(uint i = 0; i < poolInfos.length;i++){
+            allAmount += poolInfos[i].amount;
+        }
     }
 
 
