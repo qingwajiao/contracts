@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity 0.8.17;
 
 // import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -10,16 +11,13 @@ import "./interfaces/IBEP20.sol";
 import "./libraries/SafeBEP20.sol";
 
 
-contract FixedTermStack is Ownable {
+contract FixedTermStack is Ownable, ReentrancyGuard {
 
     /**
      * Extends uint256 by SafeMath
      */
     // using SafeMath for uint256;
 
-    /**
-     * Extends safe operation by SafeBEP20
-     */
     using SafeBEP20 for IBEP20;
 
     uint256 public constant DENOMINATOR = 365 days;  
@@ -28,23 +26,6 @@ contract FixedTermStack is Ownable {
 
     uint256 public constant DENOMINATOR_TEST = 10 minutes;
 
-    // uint256 public constant day = 12 * 60 * 24;
-    
-    /**
-     * Info of each user.
-     *
-     *
-     * We do some fancy math here. Basically, any point in time, the amount of BFLYs
-     * entitled to a user but is pending to be distributed is:
-     *
-     *   pending reward = (user.amount * pool.accBflyPerShare) - user.rewardDebt
-     *
-     * Whenever a user deposits or withdraws LP tokens to a pool. Here's what happens:
-     *   1. The pool's `accBflyPerShare` (and `lastRewardBlock`) gets updated.
-     *   2. User receives the pending reward sent to his/her address.
-     *   3. User's `amount` gets updated.
-     *   4. User's `rewardDebt` gets updated.
-     */
     struct UserInfo {
         uint256 lockStartTime;
         uint256 offset; 
@@ -55,7 +36,6 @@ contract FixedTermStack is Ownable {
         uint256 apr;
         uint256 time;
     }
-
 
     struct PoolInfo{
         uint256 id;
@@ -75,11 +55,6 @@ contract FixedTermStack is Ownable {
      */
     IBEP20 public para;
 
-    /**
-     * The block number when mining starts.
-     */
-    // uint256 public startBlock;
-
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event AddPool(uint256 indexed pid,uint256 indexed apr, uint256 indexed duration);
@@ -87,13 +62,11 @@ contract FixedTermStack is Ownable {
 
     constructor(
         IBEP20 _para
-
     ) {
         para = _para;
 
         initialized();
     }
-
 
     function initialized()private {
 
@@ -104,7 +77,6 @@ contract FixedTermStack is Ownable {
         p.duration = 5 * 1 minutes;
         p.id = _id;
         p.amount = 0;
-
 
     }           
 
@@ -117,7 +89,7 @@ contract FixedTermStack is Ownable {
 
     function getPoolInfo(uint256 _pid) external view returns (uint256 ,uint256, uint256, uint256 ){
         PoolInfo storage p = poolInfos[_pid];
-        return (p.id, p.duration, p.aprs[p.aprs.length - 1].apr,p.amount);
+        return (p.id, p.amount, p.duration, p.aprs[p.aprs.length - 1].apr);
     }
 
     /**
@@ -215,7 +187,7 @@ contract FixedTermStack is Ownable {
     /**
      * @dev Deposit LP tokens to LPMining for bfly allocation.
      */
-    function deposit(uint256 _pid, uint256 _amount) public {
+    function deposit(uint256 _pid, uint256 _amount) external nonReentrant {
         PoolInfo storage pool = poolInfos[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         require(_amount > 0,"FixedTermStack: Below minimum");
@@ -249,7 +221,7 @@ contract FixedTermStack is Ownable {
     /**
      * @dev Withdraw LP tokens from MasterChef.
      */
-    function withdraw(uint256 _pid) public {
+    function withdraw(uint256 _pid) external nonReentrant {
         PoolInfo storage pool = poolInfos[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         require(user.amount >= 0, "FixedTermStack: SUFFICIENT_BALANCE");
@@ -288,7 +260,6 @@ contract FixedTermStack is Ownable {
         uint256 balances = para.balanceOf(address(this));
         IBEP20(para).safeTransfer(msg.sender, balances - allAmount);
     }
-
 
     function addPool(uint256 _apr, uint256 _duration) external  onlyOwner {
 
