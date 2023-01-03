@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.17;
 
-// import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+// import "@openzeppelin/contracts/utils/math/SafeMath.sol"; 
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -20,11 +20,9 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
 
     using SafeBEP20 for IBEP20;
 
-    uint256 public constant DENOMINATOR = 365 days;  
+    uint256 public constant SECONDSPERYEAR = 365 days;  
 
     uint256 public constant BASE = 1000;
-
-    uint256 public constant DENOMINATOR_TEST = 10 minutes;
 
     struct UserInfo {
         uint256 lockStartTime;
@@ -110,7 +108,7 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
         bool flag;
         if (pool.aprs[len-1].time < user.lockStartTime){
             multiplier = getMultiplier(user.lockStartTime,block.timestamp);
-            reward = multiplier * pool.aprs[len-1].apr * user.amount / DENOMINATOR_TEST / BASE;
+            reward = multiplier * pool.aprs[len-1].apr * user.amount / SECONDSPERYEAR / BASE;
             return reward;
         }
 
@@ -130,16 +128,18 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
                       
         }
 
-        multiplier = getMultiplier(pool.aprs[len-1].time, block.number);
+        multiplier = getMultiplier(pool.aprs[len-1].time, block.timestamp);
         reward += multiplier * pool.aprs[len-1].apr * user.amount;
-        reward = reward / DENOMINATOR_TEST / BASE;
+        reward = reward / SECONDSPERYEAR / BASE;
 
         return reward;
 
     }
 
-
-    function calculateReward(uint256 _pid, address _user) public view returns (uint256 reward) {
+    /**
+     * @dev Effective interest of accounting user.
+     */
+    function calculateReward(uint256 _pid, address _user) internal view returns (uint256 reward) {
         PoolInfo storage pool = poolInfos[_pid];
         UserInfo storage user = userInfo[_pid][_user];
         uint256 len = pool.aprs.length;
@@ -147,10 +147,9 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
         bool flag;
         uint256 termOfValidity = ((block.timestamp - user.lockStartTime) % pool.duration) * pool.duration ;
         
-        // 如果
         if (pool.aprs[len-1].time < user.lockStartTime){
             reward = termOfValidity * pool.aprs[len-1].apr * user.amount;
-            reward = reward / DENOMINATOR_TEST / BASE;
+            reward = reward / SECONDSPERYEAR / BASE;
             return reward;
         }
         for (uint i = user.offset;i< len-1;i++){
@@ -159,7 +158,7 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
                 multiplier = getMultiplier(user.lockStartTime, pool.aprs[i+1].time);
                 if (multiplier > termOfValidity){
                     reward = termOfValidity * pool.aprs[i].apr * user.amount;
-                    reward = reward / DENOMINATOR_TEST / BASE;
+                    reward = reward / SECONDSPERYEAR / BASE;
                     return reward;
                     }
                 reward = multiplier * pool.aprs[i].apr * user.amount;
@@ -171,7 +170,7 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
 
             if (tempNumber + multiplier > termOfValidity){
                 reward += (termOfValidity - multiplier) * pool.aprs[i].apr * user.amount;
-                reward = reward / DENOMINATOR_TEST / BASE;
+                reward = reward / SECONDSPERYEAR / BASE;
                 return reward;
                 }    
             
@@ -179,13 +178,13 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
             multiplier += tempNumber;          
         }
 
-            reward += (termOfValidity - multiplier) * pool.aprs[len-1].apr * user.amount / DENOMINATOR_TEST / BASE;
+            reward += (termOfValidity - multiplier) * pool.aprs[len-1].apr * user.amount / SECONDSPERYEAR / BASE;
             return reward;          
         
     }
 
     /**
-     * @dev Deposit LP tokens to LPMining for bfly allocation.
+     * @dev Deposit staked tokens
      */
     function deposit(uint256 _pid, uint256 _amount) external nonReentrant {
         PoolInfo storage pool = poolInfos[_pid];
@@ -195,7 +194,7 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
         if (user.amount > 0){
             
             if(user.lockStartTime + pool.duration < block.timestamp){
-                // 质押到期，返还利息
+                // Interest will be paid to users when the pledge period expires
                 uint256 pending = calculateReward(_pid,msg.sender);
                 if(pending > 0) {
                     IBEP20(para).safeTransfer(msg.sender, pending);
@@ -204,22 +203,21 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
             }                 
         }
 
-                        // 追加本金 、更新质押开始时间 
-            
+        // Update userInfo,pool amount, allAmount 
         user.amount += _amount;
         user.lockStartTime = block.timestamp;
         user.offset = pool.aprs.length - 1;
         pool.amount += _amount;
         allAmount += _amount;
 
-
+        // Transfer the user's principal to the contract
         IBEP20(para).safeTransferFrom(address(msg.sender), address(this), _amount);
         emit Deposit(msg.sender, _pid, _amount);
         
     }
 
     /**
-     * @dev Withdraw LP tokens from MasterChef.
+     * @dev Withdraw staked tokens and collect reward tokens.
      */
     function withdraw(uint256 _pid) external nonReentrant {
         PoolInfo storage pool = poolInfos[_pid];
@@ -228,7 +226,7 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
 
         if(user.lockStartTime + pool.duration < block.timestamp){
 
-            // 返还利息
+            // Interest will be paid to users when the pledge period expires
             uint256 pending = calculateReward(_pid,msg.sender);
                 if(pending > 0) {
                     IBEP20(para).safeTransfer(msg.sender, pending);
@@ -275,9 +273,6 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
 
     }
 
-    /**
-     * @dev Update the given pool's BFLY allocation point. Can only be called by the owner.
-     */
     function setApr(uint256 _pid, uint256 _apr) public onlyOwner {
         PoolInfo storage pool = poolInfos[_pid];
         pool.aprs.push(AprInfo({
