@@ -145,7 +145,7 @@ contract FixedTermStack is Ownable, ReentrancyGuard {
         uint256 len = pool.aprs.length;
         uint256 multiplier;
         bool flag;
-        uint256 termOfValidity = ((block.timestamp - user.lockStartTime) % pool.duration) * pool.duration ;
+        uint256 termOfValidity = ((block.timestamp - user.lockStartTime) / pool.duration) * pool.duration ;
         
         if (pool.aprs[len-1].time < user.lockStartTime){
             reward = termOfValidity * pool.aprs[len-1].apr * user.amount;
